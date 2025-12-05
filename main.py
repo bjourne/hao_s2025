@@ -90,8 +90,8 @@ def train_one_epoch(
     return epoch_loss/lenth
 
 
-def eval_one_epoch(model, test_dataloader, sim_len, record_time=False):
-    tot = torch.zeros(sim_len).cuda()
+def eval_one_epoch(model, test_dataloader, n_time_steps, record_time=False):
+    tot = torch.zeros(n_time_steps)
     model.eval()
     if record_time is True:
         starter, ender = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
@@ -100,23 +100,17 @@ def eval_one_epoch(model, test_dataloader, sim_len, record_time=False):
     with torch.no_grad():
         for img, label in tqdm(test_dataloader):
             spikes = 0
-            img = img.to(torch.device('cuda'), non_blocking=True)
-            label = label.to(torch.device('cuda'), non_blocking=True)
             lenth += len(img)
 
-            img = img.unsqueeze(0).repeat(sim_len, 1, 1, 1, 1).flatten(0, 1)
-            if record_time is True:
-                starter.record()
-                out = model(img)
-                ender.record()
-                tot_time += starter.elapsed_time(ender) / 1000
-            else:
-                out = model(img)
-            out = out.view(sim_len, out.shape[0]//sim_len, -1)
+            # Direct encoding
+            img = img.unsqueeze(0).repeat(n_time_steps, 1, 1, 1, 1).flatten(0, 1)
+            assert not record_time
+            out = model(img)
+            out = out.view(n_time_steps, out.shape[0]//n_time_steps, -1)
 
-            for t in range(sim_len):
+            for t in range(n_time_steps):
                 spikes += out[t]
-                tot[t] += (label==spikes.max(1)[1]).sum().item()
+                tot[t] += (label == spikes.max(1)[1]).sum().item()
 
     if record_time is True:
         return tot/lenth, tot_time/lenth

@@ -25,7 +25,7 @@ class ParaInfNeuron(Module):
             return (((self.TxT * x.view(T, -1).mean(dim=0) + self.bias) >= self.v_threshold).float() * self.v_threshold).view(-1, N)
 
 
-class IFNeuron(nn.Module):
+class IFNeuron(Module):
     def __init__(self, T, th=1., init_mem=0.5):
         super(IFNeuron, self).__init__()
         self.T = T
