@@ -1,28 +1,30 @@
 import torch
 from torch import nn
+from torch.nn import *
 import math
 
-class ParaInfNeuron(nn.Module):
+class ParaInfNeuron(Module):
     def __init__(self, T, th=1., init_mem=0.5, dim=5):
-        super(ParaInfNeuron, self).__init__()
+        super().__init__()
         self.T = T
         self.v_threshold = th
         self.register_buffer('TxT', T / torch.arange(1, T+1).unsqueeze(-1))
         self.register_buffer('bias', (init_mem * th) / torch.arange(1, T+1).unsqueeze(-1))
         self.dim = dim
-        
+
     def forward(self, x):
         # x.shape: [TxB, C, H, W] or [TxB, N]
+        bs = int(x.shape[0] / self.T)
 
-        x = x.view((self.T, int(x.shape[0] / self.T)) + x.shape[1:])       
+        x = x.view((self.T, bs) + x.shape[1:])
         if self.dim == 5:
             T, B, C, H, W = x.size()
             return (((self.TxT * x.view(T, -1).mean(dim=0) + self.bias) >= self.v_threshold).float() * self.v_threshold).view(-1, C, H, W)
         else:
             T, B, N = x.size()
             return (((self.TxT * x.view(T, -1).mean(dim=0) + self.bias) >= self.v_threshold).float() * self.v_threshold).view(-1, N)
-        
-        
+
+
 class IFNeuron(nn.Module):
     def __init__(self, T, th=1., init_mem=0.5):
         super(IFNeuron, self).__init__()
@@ -48,7 +50,7 @@ class IFNeuron(nn.Module):
     def reset(self):
         self.v = self.init_mem * self.v_threshold
         self.t = 0
-    
+
 
 class ParaInfNeuron_CW_ND(nn.Module):
     def __init__(self, T, pre_th, post_bias, bias):
@@ -58,10 +60,10 @@ class ParaInfNeuron_CW_ND(nn.Module):
         self.register_buffer('post_th', pre_th + post_bias) # shape: [C, 1, 1]
         self.register_buffer('TxT', T / torch.arange(1, T+1).unsqueeze(-1).unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)) # shape: [T, 1, 1, 1, 1]
         self.register_buffer('bias', bias / torch.arange(1, T+1).unsqueeze(-1).unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)) # shape: [T, 1, C, 1, 1]
-        
+
     def forward(self, x):
         # x.shape: [TxB, C, H, W]
-        
+
         x = x.view((self.T, int(x.shape[0] / self.T)) + x.shape[1:])
         T, B, C, H, W = x.size()
         return (((self.TxT * x.mean(dim=0) + self.bias) >= self.pre_th).float() * self.post_th).view(-1, C, H, W)
@@ -75,7 +77,7 @@ class FloorLayer(torch.autograd.Function):
     @staticmethod
     def backward(ctx, grad_output):
         return grad_output
-        
+
 qcfs = FloorLayer.apply
 
 
@@ -107,10 +109,10 @@ class QCFS(nn.Module):
 
             x[0] = torch.clamp(qcfs((x[0]+self.rec_in_mean)*self.t/self.up+0.5)/self.t,0,1)*(self.up+self.rec_th_mean)
             x[1] = torch.clamp(qcfs(x[1]*8/self.up+0.5)/8,0,1)*self.up if self.is_relu is False else torch.clamp(x[1], torch.zeros_like(self.up), self.up) # resnet_qcfs 8, vgg16_qcfs 4 or 16.
-            
+
             err = (x[1] - x[0]).transpose(0, 1).flatten(1)
             self.rec_th_mean = 0.99 * self.rec_th_mean + 0.01 * err.mean(dim=1).unsqueeze(-1).unsqueeze(-1)
-            
+
             return x.flatten(0, 1)
         else:
             x = x / self.up
@@ -123,7 +125,7 @@ class RecReLU(nn.Module):
     def __init__(self):
         super().__init__()
         self.init_up = False
-            
+
     def forward(self, x):
         max_th = x.transpose(0, 1).flatten(1).max(1)[0].unsqueeze(-1).unsqueeze(-1)
         if self.init_up is False:
@@ -131,6 +133,5 @@ class RecReLU(nn.Module):
             self.register_buffer('up', max_th)
         else:
             self.up = torch.max(self.up, max_th)
-        
+
         return torch.clamp(x, torch.zeros_like(self.up), self.up)
-       

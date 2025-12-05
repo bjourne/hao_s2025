@@ -1,8 +1,11 @@
 import torch.nn as nn
 import torch
-import sys 
-sys.path.append("..") 
+import sys
+sys.path.append("..")
+
+
 from modules import QCFS
+from torch.nn import *
 
 
 cfg = {
@@ -16,9 +19,9 @@ cfg = {
 }
 
 
-class VGG(nn.Module):
+class VGG(Module):
     def __init__(self, T, vgg_name, is_cab, num_classes, dropout):
-        super(VGG, self).__init__()
+        super().__init__()
         self.init_channels = 3
         self.T = T
         self.is_cab = is_cab
@@ -29,25 +32,25 @@ class VGG(nn.Module):
         self.layer5 = self._make_layers(cfg[vgg_name][4], dropout)
         if num_classes == 1000:
             self.classifier = nn.Sequential(
-                nn.Flatten(),
-                nn.Linear(512*7*7, 4096),
+                Flatten(),
+                Linear(512*7*7, 4096),
                 QCFS(t=T, dim=3),
-                nn.Dropout(dropout),
-                nn.Linear(4096, 4096),
+                Dropout(dropout),
+                Linear(4096, 4096),
                 QCFS(t=T, dim=3),
-                nn.Dropout(dropout),
-                nn.Linear(4096, num_classes)
+                Dropout(dropout),
+                Linear(4096, num_classes)
             )
         else:
             self.classifier = nn.Sequential(
-                nn.Flatten(),
-                nn.Linear(512, 4096),
+                Flatten(),
+                Linear(512, 4096),
                 QCFS(t=T, dim=3),
-                nn.Dropout(dropout),
-                nn.Linear(4096, 4096),
+                Dropout(dropout),
+                Linear(4096, 4096),
                 QCFS(t=T, dim=3),
-                nn.Dropout(dropout),
-                nn.Linear(4096, num_classes)
+                Dropout(dropout),
+                Linear(4096, num_classes)
             )
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
